@@ -10,16 +10,12 @@ body {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: #333;
 }
-.content h1 {
-  display: none;
-}
 
 .game {
   position: relative;
   width: 800px;
   height: 800px;
   margin: auto;
-  display: none;
 }
 .map {
   position: absolute;
