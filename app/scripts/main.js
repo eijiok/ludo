@@ -1,7 +1,7 @@
 var Token = function(player, id) {
   this.player = player;
   this.id = id;
-  this.position = 0;
+  this.position = -1;
 };
 var Tower = function(token1, token2) {
   this.tokens = [];
@@ -23,6 +23,7 @@ var Table = function () {
   var TOKEN_NUM = 4;
   this.path = [];
   this.tokens = [];
+  this.home = [];
   this.numberOfPlayers;
 
   var PATH_SIZE = 19 * 4;
@@ -31,8 +32,10 @@ var Table = function () {
     this.numberOfPlayers = numberOfPlayers;
     for (var i = 0; i < numberOfPlayers; i++) {
       this.tokens[i] = [];
+      this.home[i] = [];
       for (var j = 0; j < TOKEN_NUM; j++) {
         this.tokens[i][j] = new Token(i, j);
+        this.home[i][j] = this.tokens[i][j];
       }
     }
     this.initPath();
@@ -45,19 +48,12 @@ var Table = function () {
   };
 
   this.getTokenAtHome = function() {
-    var tokensHome = [];
-    for (var i = 0; i < TOKEN_NUM; i++) {
-      var token = this.tokens[this.game.turn][i];
-      if (token.position == 0) {
-        tokensHome.push(token);
-      }
-    }
-    return tokensHome;
+    return this.home[this.game.turn];
   };
   this.getTokensOut = function() {
     var tokensOut = [];
     for (var i = 0; i < TOKEN_NUM; i++) {
-      if (this.tokens[this.game.turn][i].position != 0) {
+      if (this.tokens[this.game.turn][i].position != -1) {
         tokensOut.push(this.tokens[this.game.turn][i]);
       }
     }
@@ -75,19 +71,35 @@ var Table = function () {
 
   this.walk = function(player, tokenId, steps) {
     var token = this.tokens[player][tokenId];
-    token.position += steps;
+    // token.position += steps;
+    var sentido = +1;
+    var indiceCaminhoFinal = this.indiceCaminhoFinal(player);
+    var ultimaPosicao = this.lastPosition(player);
+    for (var i = 0; i < steps; i++) {
+      this.step(player, tokenId, sentido);
+      if (token.position == ultimaPosicao) {
+        sentido = (-1) * sentido;
+      }
+    }
     this.game.nextPlayer();
   }
 
+  this.indiceCaminhoFinal = function(player) {
+    return (12 + ((player + 3) * 19)) % PATH_SIZE;
+  };
+  this.lastPosition = function(player) {
+    return (18 + ((player + 3) * 19)) % PATH_SIZE;
+  };
 
-
-  this.step = function (player, tokenId) {
+  this.step = function (player, tokenId, sentido) {
     var token = this.tokens[player][tokenId];
     var absolutePosition = this.getPathPosition(player, token.position);
     var nextAbsolutePosition;
-    var caminhoFinal = (5 + ((token + 3) * 19)) % PATH_SIZE;
-    if (absolutePosition > caminhoFinal) {
-      nextAbsolutePosition = absolutePosition + 1
+    var caminhoFinal = this.indiceCaminhoFinal(player);
+    if (token.position == -1) {
+      nextAbsolutePosition = this.getPathPosition(player, 1);
+    } else  if (absolutePosition > caminhoFinal) {
+      nextAbsolutePosition = absolutePosition + sentido;
     } else {
       if (absolutePosition % 19 == 12 ) {
         nextAbsolutePosition = absolutePosition + 7;
@@ -98,15 +110,23 @@ var Table = function () {
     var nextContent = this.path[nextAbsolutePosition];
     if ((nextContent != null) && (nextContent instanceof Tower)){
       // do nothing
+      return;
     } else {
       this.removeToken(absolutePosition, token);
-      if (nextContent.player != token.player) {
-        this.sendToHome(nextAbsolutePosition);
+      if (nextContent != null) {
+        if (nextContent.player != token.player) {
+          this.sendToHome(nextAbsolutePosition);
+        }
       }
+
       this.addToken(nextAbsolutePosition, token);
     }
   };
   this.removeToken = function(position, token) {
+    if (token.position == -1) {
+      this.home[token.player][token.id] = null;
+      return;
+    }
     var previousPosition = this.path[position];
     if (previousPosition instanceof Tower) {
       var otherToken = previousPosition.remove(token);
@@ -121,11 +141,11 @@ var Table = function () {
     token.position = 0;
   }
   this.addToken = function(position, token) {
-    var previsousToken = this.path[position];
-    if (previsousToken == null) {
-      this.path[position] = previsousToken;
+    var nextPositionContent = this.path[position];
+    if (nextPositionContent == null) {
+      this.path[position] = token;
     } else {
-      this.path[position] = new Tower(previsousToken, token);
+      this.path[position] = new Tower(nextPositionContent, token);
     }
   };
   this.getPathPosition = function(player, position) {
