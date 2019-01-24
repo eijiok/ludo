@@ -1,60 +1,141 @@
+var TOKEN_NUM = 4;
+var TOKEN_HOME = 0;
 var Token = function(player, id) {
   this.player = player;
   this.id = id;
-  this.position = -1;
+  this.position = TOKEN_HOME;
 };
-var Tower = function(token1, token2) {
-  this.tokens = [];
-  this.tokens.push(token1);
-  this.tokens.push(token2);
+
+var EMPTY = 'EMPTY',
+  TOKEN = 'TOKEN',
+  TOWER = 'TOWER';
+
+var Block = function(pos) {
+  this.content = [];
+  this.contentClass = EMPTY;
+  this.pos = pos;
+
+  var CONTENT_NAME = [EMPTY, TOKEN, TOWER];
+  this.canAdd = function(token) {
+    return (this.content.length < 2);
+  };
+  this.add = function (token) {
+    if (! this.canAdd) {
+      throw new Error('cannot pass a tower')
+    }
+    if(this.content.length === 0) {
+      this.content.push(token);
+      this.contentClass = TOKEN;
+      return null;
+    }
+    var currToken = this.content[0];
+    if (currToken.player === token.player) {
+      this.content.push(token);
+      this.contentClass = TOWER;
+      return null;
+    }
+    // currToken.player !== token.player
+    this.content[0] = token;
+    this.contentClass = TOWER;
+    return currToken;
+  };
 
   this.remove = function (token) {
-    for (var i = 0; i < this.tokens.length; i++) {
-      if (this.tokens[i].id == token.id) {
-        this.tokens.splice(i, 1);
-        return tokens[0];
+    if (this.content.length === 0) {
+      throw new Error('Cannot remove empty house');
+    }
+
+    for (var i = 0; i < this.content.length; i++) {
+      var currToken = this.content[i];
+      if (currToken.player === token.player && currToken.id === token.id) {
+        this.content.splice(i, 1);
+        this.contentClass = CONTENT_NAME[this.content.length];
+        return;
       }
     }
-    return null;
+    throw new Error('Cannot remove ' + token.player + ": " + token.id);
+  };
+  this.print = function() {
+    var name = ' ' + this.pos+ ":"
+    if (this.contentClass === EMPTY) {
+      name += '__';
+    } else if (this.contentClass === TOKEN) {
+      var token = this.content[0];
+      name += token.player+':('+token.id+')';
+    } else  if (this.contentClass === TOWER) {
+      var token0 = this.content[0];
+      var token1 = this.content[1];
+      name+= token0.player+':('+token0.id+ '-'+token1.id+')';
+    }
+    return name + ' | ';
   }
 };
 
-var Table = function () {
-  var TOKEN_NUM = 4;
-  this.path = [];
-  this.tokens = [];
-  this.home = [];
-  this.numberOfPlayers;
+var Path = function(pathSize) {
+  this.lines = [];
+  for (var i = 0; i < pathSize; i++) {
+    this.lines[i] = new Block(i);
+  }
 
-  var PATH_SIZE = 19 * 4;
+  this.canWalk = function (token, position){
+    var block = this.lines[position];
+    return block.canAdd(token);
+  };
+  this.add = function (token, position){
+    var block = this.lines[position];
+    return block.add(token);
+  };
+  this.remove = function (token, position) {
+    var block = this.lines[position];
+    return block.remove(token);
+  };
+  this.isLastPosition = function(position) {
+    return position === (pathSize - 1);
+  };
+};
+var FINAL_LINE_SIZE = 6;
+
+var Table = function () {
+  var PATH_SIZE = 13 * 4;
+  var FORK_POS = PATH_SIZE - 1;
+  var FINAL_POS = FORK_POS + 6;
+
+  this.path = new Path(PATH_SIZE);
+  this.tokens = [];
+  this.finalLines = [];
+  this.numberOfPlayers;
 
   this.init = function (numberOfPlayers, game) {
     this.numberOfPlayers = numberOfPlayers;
+    this.game = game;
+
     for (var i = 0; i < numberOfPlayers; i++) {
       this.tokens[i] = [];
-      this.home[i] = [];
+      this.finalLines[i] = [];
+
       for (var j = 0; j < TOKEN_NUM; j++) {
         this.tokens[i][j] = new Token(i, j);
-        this.home[i][j] = this.tokens[i][j];
       }
+      this.finalLines[i] = new Path(FINAL_LINE_SIZE);
     }
-    this.initPath();
-    this.game = game;
-  };
-  this.initPath = function () {
-    for (var i = 0; i < PATH_SIZE; i++) {
-      this.path[i] = null;
-    }
+
+    this.path = new Path(PATH_SIZE);
   };
 
-  this.getTokenAtHome = function() {
-    return this.home[this.game.turn];
+  this.getTokenAtHome = function(player) {
+    var home = [];
+    for (var i = 0 ; i < 4; i++) {
+      if (this.tokens[player][i].position == TOKEN_HOME) {
+        home.push(this.tokens[player][i]);
+      }
+    }
+    return home;
   };
-  this.getTokensOut = function() {
+  this.getTokensOut = function(player) {
     var tokensOut = [];
     for (var i = 0; i < TOKEN_NUM; i++) {
-      if (this.tokens[this.game.turn][i].position != -1) {
-        tokensOut.push(this.tokens[this.game.turn][i]);
+      if (this.tokens[player][i].position != TOKEN_HOME) {
+        tokensOut.push(this.tokens[player][i]);
       }
     }
     return tokensOut;
@@ -71,86 +152,53 @@ var Table = function () {
 
   this.walk = function(player, tokenId, steps) {
     var token = this.tokens[player][tokenId];
-    // token.position += steps;
-    var sentido = +1;
-    var indiceCaminhoFinal = this.indiceCaminhoFinal(player);
-    var ultimaPosicao = this.lastPosition(player);
+    var direction = +1;
+
     for (var i = 0; i < steps; i++) {
-      this.step(player, tokenId, sentido);
-      if (token.position == ultimaPosicao) {
-        sentido = (-1) * sentido;
+
+      var nextRelativePosition = token.position + direction;
+      if (token.position > FORK_POS) {
+        var nextPosition = nextRelativePosition % (FORK_POS + 1);
+        if (this.finalLines[token.player].canWalk(token, nextPosition)) {
+          this.finalLines[token.player].remove(token , token.position % (FORK_POS + 1));
+          this.finalLines[token.player].add(token, nextPosition);
+          token.position += direction;
+        }
+        if (token.position == FINAL_POS) {
+          direction = (-1) * direction;
+        }
+      } else if (token.position == FORK_POS) {
+        // entra na reta final
+        var nextPosition = nextRelativePosition % (FORK_POS + 1);
+        if (this.finalLines[token.player].canWalk(token, 0)) {
+          this.path.remove(token, this.getPathPosition(token));
+          this.finalLines[token.player].add(token , nextPosition);
+          token.position += direction;
+        }
+      } else { // token.position < FORK_POS
+        var currentPosition = this.getPathPosition(token);
+        var nextPosition = (currentPosition + 1) % PATH_SIZE;
+        if (this.path.canWalk(token, nextPosition)) {
+          if (token.position !== TOKEN_HOME) {
+            this.path.remove(token, currentPosition);
+          }
+          var replacedToken = this.path.add(token, nextPosition);
+          token.position += direction;
+          if (replacedToken !== null) {
+            replacedToken.position = 0;
+          }
+        }
       }
+    }
+    if (token.position == FINAL_POS) {
+      this.game.tokenGetsToFinal(token);
     }
     this.game.nextPlayer();
   }
 
-  this.indiceCaminhoFinal = function(player) {
-    return (12 + ((player + 3) * 19)) % PATH_SIZE;
+  this.getPathPosition = function(token) {
+    return (token.position + (token.player * 13)) % PATH_SIZE;
   };
-  this.lastPosition = function(player) {
-    return (18 + ((player + 3) * 19)) % PATH_SIZE;
-  };
-
-  this.step = function (player, tokenId, sentido) {
-    var token = this.tokens[player][tokenId];
-    var absolutePosition = this.getPathPosition(player, token.position);
-    var nextAbsolutePosition;
-    var caminhoFinal = this.indiceCaminhoFinal(player);
-    if (token.position == -1) {
-      nextAbsolutePosition = this.getPathPosition(player, 1);
-    } else  if (absolutePosition > caminhoFinal) {
-      nextAbsolutePosition = absolutePosition + sentido;
-    } else {
-      if (absolutePosition % 19 == 12 ) {
-        nextAbsolutePosition = absolutePosition + 7;
-      } else {
-        nextAbsolutePosition = absolutePosition + 1;
-      }
-    }
-    var nextContent = this.path[nextAbsolutePosition];
-    if ((nextContent != null) && (nextContent instanceof Tower)){
-      // do nothing
-      return;
-    } else {
-      this.removeToken(absolutePosition, token);
-      if (nextContent != null) {
-        if (nextContent.player != token.player) {
-          this.sendToHome(nextAbsolutePosition);
-        }
-      }
-
-      this.addToken(nextAbsolutePosition, token);
-    }
-  };
-  this.removeToken = function(position, token) {
-    if (token.position == -1) {
-      this.home[token.player][token.id] = null;
-      return;
-    }
-    var previousPosition = this.path[position];
-    if (previousPosition instanceof Tower) {
-      var otherToken = previousPosition.remove(token);
-      this.path[position] = otherToken;
-    } else {
-      this.path[position] = null;
-    }
-  };
-  this.sendToHome = function (position) {
-    var token = this.path[position];
-    this.path[position] = null;
-    token.position = 0;
-  }
-  this.addToken = function(position, token) {
-    var nextPositionContent = this.path[position];
-    if (nextPositionContent == null) {
-      this.path[position] = token;
-    } else {
-      this.path[position] = new Tower(nextPositionContent, token);
-    }
-  };
-  this.getPathPosition = function(player, position) {
-    return (player * 19 + position) % PATH_SIZE;
-  }
 };
 
 var TableView = function(table) {
@@ -159,17 +207,36 @@ var TableView = function(table) {
   $('.game img').css('display','none');
   $('.game').css('height', 'auto');
   var $printArea = $('.game');
+
   this.render = function() {
     $printArea.html('');
-    var path = this.table.path;
+    var path = this.table.path.lines;
     for (var i = 0; i < path.length ; i++) {
-      var posicaoRelativa = i %19;
-      if (posicaoRelativa == 12 || posicaoRelativa == 0) {
+      if (i %13 == 0) {
         $printArea.append('<br />');
       }
-
-      $printArea.append(this.tokenValue(path[i]));
+      $printArea.append(path[i].print());
     }
+    $printArea.append('<br />');
+
+    $printArea.append("Home: <br />")
+    for (var i = 0; i < this.table.game.numberOfPlayers; i++) {
+      var tokens = this.table.getTokenAtHome(i);
+      $printArea.append('Player: ' + i);
+      $printArea.append('<br/>');
+      $printArea.append(this.table.printTokens(tokens));
+      $printArea.append('<br/>');
+    }
+    $printArea.append('<br/>');
+
+    $printArea.append("Final lines: <br />")
+    for (var i = 0; i < this.table.game.numberOfPlayers; i++) {
+      for (var j = 0; j < this.table.finalLines[i].lines.length; j++) {
+        $printArea.append(this.table.finalLines[i].lines[j].print());
+      }
+      $printArea.append('<br />');
+    }
+
 
   };
   this.tokenValue = function(token) {
@@ -207,8 +274,6 @@ var Logger = function (id) {
 
 };
 var Game = function()  {
-  var thiz = this;
-  var TOKEN_NUM = 4;
 
   this.playersColor = ['verde', 'vermelho', 'azul', 'amarelo'];
 
@@ -217,20 +282,12 @@ var Game = function()  {
   this.canPlay = false;
   this.canRollTheDie = false;
   this.table = new Table();
-  var tableView = new TableView(this.table);
+  window.tableView = new TableView(this.table);
 
   this.init = function (numberOfPlayers){
     this.numberOfPlayers = numberOfPlayers;
     this.table.init(numberOfPlayers, this);
-    this.turn = 0;
-    // this.tokens =[];
-    // for (var i = 0; i < numberOfPlayers; i++) {
-    //   this.tokens[i] = [];
-    //   for (var j = 0; j < TOKEN_NUM; j++) {
-    //     this.tokens[i][j] = new Token(j);
-    //   }
-    // }
-
+    this.currentPlayer = 0;
     tableView.render();
   };
 
@@ -244,15 +301,15 @@ var Game = function()  {
     tableView.render();
   }
   this.nextPlayer = function() {
-    this.turn = (this.turn + 1) % this.numberOfPlayers;
+    this.currentPlayer = (this.currentPlayer + 1) % this.numberOfPlayers;
     this.lastRolled = 0;
     this.help();
     this.canRollTheDie = true;
     this.canPlay = false;
-    return this.turn;
+    return this.currentPlayer;
   };
   this.writeTurn = function() {
-    logger.writeLine('É a vez do ' + this.playersColor[this.turn]);
+    logger.writeLine('É a vez do ' + this.playersColor[this.currentPlayer]);
   };
   this.lastRolled = 0;
   this.rollTheDie = function () {
@@ -264,11 +321,20 @@ var Game = function()  {
     logger.writeLine('Tirou no dado: ' + this.lastRolled);
     this.afterRolledTheDie();
   };
+  this.roll = function (value) {
+    if (!this.canRollTheDie) {
+      logger.writeLine('Não é hora de rodar o dado');
+      return;
+    }
+    this.lastRolled = value;
+    logger.writeLine('Tirou no dado: ' + this.lastRolled);
+    this.afterRolledTheDie();
+  };
 
   this.afterRolledTheDie = function() {
     this.canRollTheDie = false;
     this.canPlay = true;
-    var tokensAtHome = this.table.getTokenAtHome();
+    var tokensAtHome = this.table.getTokenAtHome(this.currentPlayer);
     if (tokensAtHome.length == 4) {
       if (! (this.lastRolled == 1 || this.lastRolled == 6)) {
         this.nextPlayer();
@@ -279,30 +345,31 @@ var Game = function()  {
   };
 
   this.help = function() {
-    logger.write("Jogador " + this.playersColor[this.turn] + ": ");
+    tableView.render();
+    logger.write("Jogador " + this.playersColor[this.currentPlayer] + ": ");
     if (this.lastRolled == 0) {
       logger.writeLine("Jogue o dado");
       return;
     }
-    var tokenAtHome = this.table.getTokenAtHome();
+    var tokenAtHome = this.table.getTokenAtHome(this.currentPlayer);
     var todosEmCasa = tokenAtHome.length == 4;
     if (this.lastRolled == 1 || this.lastRolled == 6) {
       if (tokenAtHome.length > 0) {
         if (todosEmCasa) {
           logger.writeLine("Você pode tirar da casa " + this.table.printTokens(tokenAtHome));
         } else {
-          var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut());
+          var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut(this.currentPlayer));
           logger.writeLine("Você pode tirar da casa " + this.table.printTokens(tokenAtHome) + " ou andar com " + pawnOutOfHome);
         }
       } else {
-        var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut());
+        var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut(this.currentPlayer));
         logger.writeLine("Você pode andar com " + pawnOutOfHome);
       }
     } else {
       if (todosEmCasa) {
         logger.writeLine("Você perdeu a vez");
       } else {
-        var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut());
+        var pawnOutOfHome = this.table.printTokens(this.table.getTokensOut(this.currentPlayer));
         logger.writeLine("Você pode andar com " + pawnOutOfHome);
       }
     }
@@ -314,11 +381,11 @@ var Game = function()  {
       return;
     }
     this.verifyMove(tokenId);
-    this.table.walk(this.turn, tokenId, this.lastRolled);
+    this.table.walk(this.currentPlayer, tokenId, this.lastRolled);
     tableView.render();
   };
   this.verifyMove = function(tokenId) {
-    var token = this.table.tokens[this.turn][tokenId];
+    var token = this.table.tokens[this.currentPlayer][tokenId];
     if (this.lastRolled != 1 && this.lastRolled != 6) {
       if (token.position == 0) {
         logger.writeLine("Você não pode sair sem tirar 6 ou 1");
@@ -326,6 +393,12 @@ var Game = function()  {
       }
     }
   };
+  this.tokenGetsToFinal = function(token) {
+    logger.writeLine("Jogador " + this.playersColor[token.player] + " Venceu!");
+    this.canPlay = false;
+    this.canRollTheDie = false;
+    return;
+  }
 
 };
 var game = new Game();
