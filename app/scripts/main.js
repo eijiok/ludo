@@ -226,8 +226,8 @@ var Table = function () {
 
     if (token.position == FINAL_POS) {
       this.game.tokenGetsToFinal(token);
-    }
-    this.game.nextPlayer();
+    } 
+    this.game.nextPlayer(steps);
   };
 
   this.getPathPosition = function(player, position) {
@@ -236,6 +236,48 @@ var Table = function () {
 };
 
 var TableView = function(table) {
+  this.table = table;
+  this.render = function() {  
+    for (var i = 0; i < this.table.game.numberOfPlayers; i++) {
+      for (var j = 0; j < this.table.game.numberOfTokens; j++) {
+        this.renderToken(this.table.tokens[i][j]);
+      }
+    }
+  };
+  this.renderToken = function(token) {
+    if (token.position == TOKEN_HOME) {
+      this.renderHome(token);
+      return;
+    }
+    if (token.position <= FORK_POS) {
+      this.renderPath(token);
+      return;
+    }
+    if (token.position < FINAL_POS) {
+      this.renderLane(token);
+      return;
+    }
+    if (token.position == FINAL_POS) {
+      this.renderFinal(token);
+      return;
+    }
+  };
+  this.renderHome = function(token) {
+    console.log('renderHome', token);
+  };
+  this.renderPath = function(token) {
+    console.log('renderPath', token);
+  };
+  this.renderLane = function(token) {
+    console.log('renderLane', token);
+  };
+  this.renderFinal = function(token) {
+    console.log('renderFinal', token);
+  };
+  
+}
+
+var TextTableView = function(table) {
   this.table = table;
   $('.content h1').css('display','none');
   $('.game img').css('display','none');
@@ -332,7 +374,8 @@ var Game = function()  {
   this.canRollTheDie = false;
   this.table = new Table();
   this.numberOfTokens = TOKEN_NUM;
-  window.tableView = new TableView(this.table);
+  window.tableView = new TextTableView(this.table);// new TableView(this.table);
+  this.countSix = 0;
 
   this.init = function (numberOfPlayers){
     this.numberOfPlayers = numberOfPlayers;
@@ -355,8 +398,13 @@ var Game = function()  {
     tableView.render();
   }
 
-  this.nextPlayer = function() {
-    this.currentPlayer = (this.currentPlayer + 1) % this.numberOfPlayers;
+  this.nextPlayer = function(rolledNumber) {
+    if (rolledNumber != 6 && this.game.countSix < 2) {
+      this.currentPlayer = (this.currentPlayer + 1) % this.numberOfPlayers;  
+      this.game.countSix =0;
+    } else {
+      this.game.countSix++;
+    }
     var countNotPlaying = 0;
     while(this.place[this.currentPlayer] != null) {
       countNotPlaying++;
