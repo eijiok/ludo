@@ -16,7 +16,7 @@ var Block = function(pos) {
   this.pos = pos;
 
   var CONTENT_NAME = [EMPTY, TOKEN, TOWER];
-  this.canAdd = function(token) {
+  this.canAdd = function() {
     return (this.content.length < 2);
   };
   this.add = function (token) {
@@ -77,9 +77,9 @@ var Path = function(pathSize) {
     this.lines[i] = new Block(i);
   }
 
-  this.canWalk = function (token, position){
+  this.canWalk = function (position){
     var block = this.lines[position];
-    return block.canAdd(token);
+    return block.canAdd();
   };
   this.add = function (token, position){
     var block = this.lines[position];
@@ -89,16 +89,14 @@ var Path = function(pathSize) {
     var block = this.lines[position];
     return block.remove(token);
   };
-  this.isLastPosition = function(position) {
-    return position === (pathSize - 1);
-  };
 };
 var FINAL_LINE_SIZE = 6;
+var PATH_SIZE = 13 * 4;
+var FORK_POS = PATH_SIZE - 1;
+var FINAL_POS = FORK_POS + 6;
+
 
 var Table = function () {
-  var PATH_SIZE = 13 * 4;
-  var FORK_POS = PATH_SIZE - 1;
-  var FINAL_POS = FORK_POS + 6;
 
   this.path = new Path(PATH_SIZE);
   this.tokens = [];
@@ -150,54 +148,145 @@ var Table = function () {
     return result.join(", ");
   };
 
+  this.getFinalLanePosition = function (position) {
+    var result = position - FORK_POS - 1;
+    if (result >= FINAL_LINE_SIZE) {
+      result = result - (result - FINAL_LINE_SIZE);
+    }
+    return result;
+  };
+  this.getRelativePosition = function (position) {
+    if (position <= FINAL_POS) {
+      return position;
+    }
+    return FINAL_POS - (position - FINAL_POS);
+  }
+  this.canWalk = function (player, position) {
+    if (position == 0) {
+      return false;
+    }
+    if (position <= FORK_POS) {
+      return this.path.canWalk(this.getPathPosition(player, position));
+    }
+    if (position == FINAL_POS) {
+      return true;
+    }
+
+    return this.finalLines[player].canWalk(this.getFinalLanePosition(position));
+  };
+
+  this.removeToken = function (position, token) {
+    if (token.position == TOKEN_HOME) {
+      return;
+    }
+
+    if (position <= FORK_POS) {
+      this.path.remove(token, this.getPathPosition(token.player, position));
+      return;
+    }
+    this.finalLines[token.player].remove(token, this.getFinalLanePosition(position));
+    return;
+  };
+
+  this.addToken = function (position, token) {
+    if (token.position == TOKEN_HOME) {
+      // this.home[token.player][token.id] = token;
+      return;
+    }
+
+    if (position <= FORK_POS) {
+      this.path.add(token, this.getPathPosition(token.player, position));
+      return;
+    }
+    if (position == FINAL_POS) {
+      // this.end[token.player][token.id] = token;
+      return;
+    }
+    return this.finalLines[token.player].add(token, this.getFinalLanePosition(position));
+  };
+
   this.walk = function(player, tokenId, steps) {
     var token = this.tokens[player][tokenId];
-    var direction = +1;
-
-    for (var i = 0; i < steps; i++) {
-
-      var nextRelativePosition = token.position + direction;
-      if (token.position > FORK_POS) {
-        var nextPosition = nextRelativePosition % (FORK_POS + 1);
-        if (this.finalLines[token.player].canWalk(token, nextPosition)) {
-          this.finalLines[token.player].remove(token , token.position % (FORK_POS + 1));
-          this.finalLines[token.player].add(token, nextPosition);
-          token.position += direction;
-        }
-        if (token.position == FINAL_POS) {
-          direction = (-1) * direction;
-        }
-      } else if (token.position == FORK_POS) {
-        // entra na reta final
-        var nextPosition = nextRelativePosition % (FORK_POS + 1);
-        if (this.finalLines[token.player].canWalk(token, 0)) {
-          this.path.remove(token, this.getPathPosition(token));
-          this.finalLines[token.player].add(token , nextPosition);
-          token.position += direction;
-        }
-      } else { // token.position < FORK_POS
-        var currentPosition = this.getPathPosition(token);
-        var nextPosition = (currentPosition + 1) % PATH_SIZE;
-        if (this.path.canWalk(token, nextPosition)) {
-          if (token.position !== TOKEN_HOME) {
-            this.path.remove(token, currentPosition);
-          }
-          var replacedToken = this.path.add(token, nextPosition);
-          token.position += direction;
-          if (replacedToken !== null) {
-            replacedToken.position = 0;
-          }
-        }
+    // var direction = +1;
+    var numSteps=0;
+    for( var i = 0; i < steps; i++) {
+      if( ! this.canWalk(player, token.position + numSteps + 1) ) {
+        break;
       }
+      numSteps++;
     }
+    this.removeToken(token.position, token);
+    token.position = this.getRelativePosition(token.position + numSteps);
+    var replacedToken = this.addToken(token.position, token);
+    if (replacedToken != null) {
+      replacedToken.position = 0;
+    }
+
+    // this.home[replacedToken.player][replacedToken.id] = replacedToken;
+
+    //
+    // if (nextRelativePosition <= FORK_POS) {
+    //   for (var i = currentPathPosition; i <= nextRelativePosition; i++) {
+    //     path.canWalk(token, i)
+    //   }
+    // } else if (nextRelativePosition < FINAL_POS) {
+    //   if (currentPosition < FORK_POS) {
+    //
+    //   } else {
+    //
+    //   }
+    //
+    // } else if (nextRelativePosition == FINAL_POS) {
+    //
+    // } else if (nextRelativePosition > FINAL_POS) {
+    //
+    // }
+    //
+    //
+    // for (var i = 0; i < steps; i++) {
+    //
+    //   var nextRelativePosition = token.position + direction;
+    //   if (token.position > FORK_POS) {
+    //     var nextPosition = nextRelativePosition % (FORK_POS + 1);
+    //     if (this.finalLines[token.player].canWalk(token, nextPosition)) {
+    //       this.finalLines[token.player].remove(token , token.position % (FORK_POS + 1));
+    //       this.finalLines[token.player].add(token, nextPosition);
+    //       token.position += direction;
+    //     }
+    //     if (token.position == FINAL_POS) {
+    //       direction = (-1) * direction;
+    //     }
+    //   } else if (token.position == FORK_POS) {
+    //     // entra na reta final
+    //     var nextPosition = nextRelativePosition % (FORK_POS + 1);
+    //     if (this.finalLines[token.player].canWalk(token, 0)) {
+    //       this.path.remove(token, this.getPathPosition(token));
+    //       this.finalLines[token.player].add(token , nextPosition);
+    //       token.position += direction;
+    //     }
+    //   } else { // token.position < FORK_POS
+    //     var currentPosition = this.getPathPosition(token);
+    //     var nextPosition = (currentPosition + 1) % PATH_SIZE;
+    //     if (this.path.canWalk(token, nextPosition)) {
+    //       if (token.position !== TOKEN_HOME) {
+    //         this.path.remove(token, currentPosition);
+    //       }
+    //       var replacedToken = this.path.add(token, nextPosition);
+    //       token.position += direction;
+    //       if (replacedToken !== null) {
+    //         replacedToken.position = 0;
+    //       }
+    //     }
+    //   }
+    // }
     if (token.position == FINAL_POS) {
       this.game.tokenGetsToFinal(token);
     }
     this.game.nextPlayer();
-  }
+  };
 
-  this.getPathPosition = function(token) {
-    return (token.position + (token.player * 13)) % PATH_SIZE;
+  this.getPathPosition = function(player, position) {
+    return (position + (player * 13)) % PATH_SIZE;
   };
 };
 
@@ -402,7 +491,7 @@ var Game = function()  {
 
 };
 var game = new Game();
-game.start(2);
+game.start(1);
 
 //game.rollTheDie();
 
