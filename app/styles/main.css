@@ -15,7 +15,9 @@ body {
   position: relative;
   width: 800px;
   height: 800px;
-  margin: auto;
+  /*margin: auto;*/
+  background-color : black;
+
 }
 .map {
   position: absolute;

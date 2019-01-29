@@ -1,16 +1,23 @@
+// estados
+var EM_PREPARACAO = 0;
+var INICIADO = 1;
+var FIM_DE_PARTIDA = 2;
+
+
 var Game = function()  {
   var TOKEN_NUM = 4;
 
+  this.state = EM_PREPARACAO;
   this.playersColor = ['verde', 'vermelho', 'azul', 'amarelo'];
   this.place=[];
   this.currentPlace = 1;
-  this.die = new Dice();
+  this.dice = new Dice();
   var logger = new Logger('message');
   this.canPlay = false;
-  this.canRollTheDie = false;
+  this.canRollTheDice = false;
   this.table = new Table();
   this.numberOfTokens = TOKEN_NUM;
-  window.tableView = new TextTableView(this.table);// new TableView(this.table);
+  window.tableView = new TableView(this.table);// new TableView(this.table);
   this.countSix = 0;
 
   this.init = function (numberOfPlayers){
@@ -22,6 +29,7 @@ var Game = function()  {
       this.place[i] = null;
     }
     tableView.render();
+    this.state =EM_PREPARACAO;
   };
 
   this.start = function (numberOfPlayers) {
@@ -29,9 +37,10 @@ var Game = function()  {
     this.init(numberOfPlayers);
     logger.reset();
     logger.writeLane("Começou");
-    this.canRollTheDie = true;
+    this.canRollTheDice = true;
     this.help();
     tableView.render();
+    this.init = INICIADO;
   }
 
   this.nextPlayer = function(rolledNumber) {
@@ -46,16 +55,17 @@ var Game = function()  {
       countNotPlaying++;
       this.currentPlayer = (this.currentPlayer + 1) % this.numberOfPlayers;
       if (countNotPlaying == this.numberOfPlayers) {
+        this.state = FIM_DE_PARTIDA;
         this.isGameOver = true;
         this.canPlay = false;
-        this.canRollTheDie = false;
+        this.canRollTheDice = false;
         logger.writeLane('Game Over');
         return;
       }
     }
     this.lastRolled = 0;
     this.help();
-    this.canRollTheDie = true;
+    this.canRollTheDice = true;
     this.canPlay = false;
     return this.currentPlayer;
   };
@@ -63,17 +73,17 @@ var Game = function()  {
     logger.writeLane('É a vez do ' + this.playersColor[this.currentPlayer]);
   };
   this.lastRolled = 0;
-  this.rollTheDie = function () {
-    if (!this.canRollTheDie) {
+  this.rollTheDice = function () {
+    if (!this.canRollTheDice) {
       logger.writeLane('Não é hora de rodar o dado');
       return;
     }
-    this.lastRolled = this.die.roll();
+    this.lastRolled = this.dice.roll();
     logger.writeLane('Tirou no dado: ' + this.lastRolled);
     this.afterRolledTheDie();
   };
   this.roll = function (value) {
-    if (!this.canRollTheDie) {
+    if (!this.canRollTheDice) {
       logger.writeLane('Não é hora de rodar o dado');
       return;
     }
@@ -83,7 +93,7 @@ var Game = function()  {
   };
 
   this.afterRolledTheDie = function() {
-    this.canRollTheDie = false;
+    this.canRollTheDice = false;
     this.canPlay = true;
     var tokensAtHome = this.table.getTokenAtHome(this.currentPlayer);
     if (tokensAtHome.length == this.numberOfTokens) {
@@ -97,7 +107,7 @@ var Game = function()  {
 
   this.help = function() {
     tableView.render();
-    if (this.isGameOver) {
+    if (this.state = FIM_DE_PARTIDA) {
       logger.write("Fim de jogo!");
       return;
     }
